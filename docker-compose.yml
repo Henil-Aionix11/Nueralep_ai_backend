@@ -1,0 +1,123 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: psychiatry-ai-postgres
+    networks:
+      - psychiatry-ai-network
+    ports:
+      - "${POSTGRES_HOST_PORT}:${POSTGRES_CONTAINER_PORT}"
+    environment:
+      POSTGRES_USER: "${POSTGRES_DATABASE_USERNAME}"
+      POSTGRES_PASSWORD: "${POSTGRES_DATABASE_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DATABASE_NAME}"
+      POSTGRES_INITDB_ARGS: "-c port=${POSTGRES_CONTAINER_PORT}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_DATABASE_USERNAME} -h localhost -p ${POSTGRES_CONTAINER_PORT}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # Redis - Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: psychiatry-ai-redis
+    networks:
+      - psychiatry-ai-network
+    ports:
+      - "${REDIS_HOST_PORT}:${REDIS_CONTAINER_PORT}"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --port ${REDIS_CONTAINER_PORT}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${REDIS_CONTAINER_PORT}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: "."
+      dockerfile: "Dockerfile"
+    container_name: psychiatry-ai-backend
+    networks:
+      - psychiatry-ai-network
+    ports:
+      - "${BACKEND_HOST_PORT}:${BACKEND_CONTAINER_PORT}"
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_DATABASE_HOST=${POSTGRES_DATABASE_HOST}
+      - POSTGRES_DATABASE_PORT=${POSTGRES_CONTAINER_PORT}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./chroma_db:/app/chroma_db:rw
+      - ./docs:/app/docs:rw
+      - ./logs:/app/logs:rw
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    init: true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_CONTAINER_PORT}/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: "."
+      dockerfile: "Dockerfile"
+    container_name: psychiatry-ai-celery-worker
+    networks:
+      - psychiatry-ai-network
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_DATABASE_HOST=${POSTGRES_DATABASE_HOST}
+      - POSTGRES_DATABASE_PORT=${POSTGRES_CONTAINER_PORT}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./chroma_db:/app/chroma_db:rw
+      - ./docs:/app/docs:rw
+      - ./logs:/app/logs:rw
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    init: true
+    command: ["celery", "-A", "app.core.config.celery_config", "worker", "--loglevel=info", "--pool=threads", "--concurrency=4"]
+
+
+networks:
+  psychiatry-ai-network:
+    driver: bridge
+    name: psychiatry-ai-network
+
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

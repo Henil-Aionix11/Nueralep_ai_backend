@@ -1,0 +1,8 @@
+# Default sampling rate for routes not explicitly configured
+default_sample_rate: 1.0
+
+# Route-specific logging configuration
+routes:
+  /api/v1/health:
+    sample_rate: 0.1
+    description: Health check endpoint
