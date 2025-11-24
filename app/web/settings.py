@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     )
 
     # Application settings
-    application_name: str = "Surgitutor AI"
+    application_name: str = "NeuralERP AI"
     debug: bool = Field(False, alias="DEBUG")  #  ADD THIS
     host: str = Field("127.0.0.1", alias="HOST")
     port: int = Field(5000, alias="PORT")  #  CHANGE: lowercase 'port'
@@ -56,6 +56,20 @@ class Settings(BaseSettings):
     logs_dir: Path = Field(Path("logs"), alias="LOGS_DIR")
     log_retention_days: int = Field(30, alias="LOG_RETENTION_DAYS")
     log_rotation: str = Field("daily", alias="LOG_ROTATION")
+    dataset_upload_dir: Path = Field(
+        Path("storage/tenant_datasets"), alias="DATASET_UPLOAD_DIR"
+    )
+        # ==================== NEW: DATASET SETTINGS ====================
+    dataset_allowed_extensions: list[str] = Field(
+        default=[".csv", ".xlsx"],
+        alias="DATASET_ALLOWED_EXTENSIONS"
+    )
+
+    dataset_preview_limit: int = Field(
+        default=100,
+        alias="DATASET_PREVIEW_LIMIT"
+    )
+
 
     # CORS settings
     cors_allow_origins: str = Field("*", alias="CORS_ALLOW_ORIGINS")
@@ -96,6 +110,29 @@ class Settings(BaseSettings):
 
     # ==================== NEW: FRONTEND SETTINGS ====================
     frontend_base_url: str = Field(..., alias="FRONTEND_BASE_URL")
+    
+    
+ 
+    CHROMA_DB_PATH: str = Field(
+        default="chroma_db",
+        description="Directory path for the Chroma vector database.",
+    )
+
+    CHROMA_COLLECTION_NAME: str = Field(
+        default="sap_migration_knowledge",
+        description="Chroma collection name for RAG retrieval.",
+    )
+
+    OPENAI_EMBEDDING_MODEL: str = Field(
+        default="text-embedding-3-small",
+        description="Model used for generating embeddings.",
+    )
+
+    OPENAI_API_KEY: str | None = Field(
+        default=None,
+        description="OpenAI API key for embedding generation.",
+    )
+
 
     model_config = SettingsConfigDict(
         env_file=".env",

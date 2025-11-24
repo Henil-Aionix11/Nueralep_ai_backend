@@ -15,6 +15,7 @@ from app.core.exceptions.api_exceptions import (
     ApiConflictError,
     ApiInternalServerError,
 )
+from app.core.utils.email_utils.smtp_util import send_welcome_tenant_email
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
@@ -64,13 +65,12 @@ class SuperadminService:
                     error=f"Tenant with email '{tenant_data.email}' already exists",
                     message=f"Tenant with email '{tenant_data.email}' already exists",
                 )
-
             # Hash password
             hashed_password = self.hash_password(tenant_data.password)
 
             # If soft-deleted tenant exists, restore it
             if existing_tenant and existing_tenant.is_deleted:
-                logger.info(f"♻️ Restoring soft-deleted tenant: {existing_tenant.id}")
+                logger.info(f"Restoring soft-deleted tenant: {existing_tenant.id}")
                 
                 # Update existing tenant with new data
                 update_dict = {
@@ -79,6 +79,7 @@ class SuperadminService:
                     "country": tenant_data.country,
                     "is_active": True,
                     "is_deleted": False,
+                    "end_date":tenant_data.end_date
                 }
                 tenant = await self.tenant_repo.update(
                     existing_tenant.id, update_dict, commit=True
@@ -103,6 +104,19 @@ class SuperadminService:
                     f" Restored tenant: {tenant.name} (ID: {tenant.id}) "
                     f"with {len(agents)} agent(s)"
                 )
+                try:
+                    send_welcome_tenant_email(
+                        destination_email=tenant.email,
+                        username=tenant.email,
+                        password=tenant_data.password,  # Only for email; not stored
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send welcome email to {tenant.email}: {e}")
+                    # Rollback or delete tenant here if DB transaction not auto-rollbacked
+                    raise ApiInternalServerError(
+                        error=f"Failed to send welcome email: {e}",
+                        message="Tenant account could not be created due to email service problems. Please try again later.",
+                    )
             
             else:
                 # Create new tenant
@@ -113,6 +127,7 @@ class SuperadminService:
                     "country": tenant_data.country,
                     "is_active": True,
                     "is_deleted": False,
+                    "end_date":tenant_data.end_date
                 }
 
                 tenant = await self.tenant_repo.create(tenant_dict, commit=True)
@@ -131,6 +146,19 @@ class SuperadminService:
                     f" Created tenant: {tenant.name} (ID: {tenant.id}) "
                     f"with {len(agents)} agent(s)"
                 )
+                try:
+                    send_welcome_tenant_email(
+                        destination_email=tenant.email,
+                        username=tenant.email,
+                        password=tenant_data.password,  # Only for email; not stored
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send welcome email to {tenant.email}: {e}")
+                    # Rollback or delete tenant here if DB transaction not auto-rollbacked
+                    raise ApiInternalServerError(
+                        error=f"Failed to send welcome email: {e}",
+                        message="Tenant account could not be created due to email service problems. Please try again later.",
+                    )
 
             # Return tenant data with agents
             return {
@@ -247,7 +275,7 @@ class SuperadminService:
                     }
                 )
 
-            logger.debug(f"📋 Retrieved {len(result_list)} active tenants")
+            logger.debug(f" Retrieved {len(result_list)} active tenants")
             return result_list
 
         except Exception as e:
@@ -283,7 +311,7 @@ class SuperadminService:
             # Soft delete (agents will be cascade deleted due to relationship)
             await self.tenant_repo.update(tenant_id, {"is_deleted": True}, commit=True)
 
-            logger.info(f"🗑️ Soft deleted tenant: {tenant_id}")
+            logger.info(f" Soft deleted tenant: {tenant_id}")
             return True
 
         except ApiNotFoundError:
@@ -365,6 +393,7 @@ class SuperadminService:
                     }
                     for agent in agents
                 ],
+                "end_date":updated_tenant.end_date
             }
 
         except ApiNotFoundError:

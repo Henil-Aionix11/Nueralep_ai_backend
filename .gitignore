@@ -34,6 +34,8 @@ MANIFEST
 # Env files
 .env
 
+
+
 # Python version (PyEnv)
 .python-version
 
@@ -125,7 +127,7 @@ Henil/
 
 app/chroma_db
 
-app/static/uploads/
+/storage/tenant_datasets/
 app/docs
 
 # Cursor rules
@@ -136,4 +138,6 @@ settings.json
 
 # Local files
 local/
+
+chroma_db/
 

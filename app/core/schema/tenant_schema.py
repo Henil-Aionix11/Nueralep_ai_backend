@@ -1,6 +1,6 @@
 """Tenant schema definitions."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
@@ -36,6 +36,7 @@ class TenantCreate(BaseModel):
     agent_names: List[str] = Field(
         ..., min_items=1, description="List of agent names to assign"
     )
+    end_date: Optional[date] = Field(None, description="Tenant access end date")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -51,6 +52,7 @@ class TenantRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     agents: List[AgentRead] = []
+    end_date: Optional[date] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -86,5 +88,6 @@ class TenantUpdateByAdmin(BaseModel):
     country: Optional[str] = Field(None, min_length=2, max_length=100, description="Country")
     is_active: Optional[bool] = Field(None, description="Active status")
     agent_names: Optional[List[str]] = Field(None, min_items=1, description="List of agent names (replaces existing)")
-
+    end_date: Optional[date] = Field(None, description="Tenant access end date")
+    
     model_config = ConfigDict(from_attributes=True)

@@ -142,3 +142,27 @@ def send_verification_email(destination_email: str, verification_url: str):
         html=html_content,
     )
     logger.info(f"Verification email sent to {destination_email}")
+
+
+def send_welcome_tenant_email(destination_email: str, username: str, password: str):
+    """Send welcome email with tenant credentials."""
+    html_content = _load_template("welcome_tenant.html")
+    html_content = html_content.replace("{tenant_email}", username).replace("{tenant_password}", password)
+
+    text_content = (
+        f"Welcome to NeuralERP AI!\n\n"
+        f"Your account has been created.\n"
+        f"Email: {username}\nPassword: {password}\n\n"
+        f"Use these credentials to log in."
+    )
+
+    subject = "NeuralERP AI Account Created"
+
+    smtp_sender = get_smtp_sender()
+    smtp_sender.send_email(
+        source=settings.smtp_username,
+        destination=destination_email,
+        subject=subject,
+        text=text_content,
+        html=html_content,
+    )

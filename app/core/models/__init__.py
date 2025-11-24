@@ -9,19 +9,16 @@ from app.core.models.base_model import (
 # from app.core.models.user_model import User
 from app.core.models.tenant_model import Tenant
 from app.core.models.agent_model import Agent
-# from app.core.models.topic_model import Topic
-# from app.core.models.scenario_model import Scenario
-# from app.core.models.session_model import Session
 
+from app.core.models.chat_model import Chat
+from app.core.models.chat_message_model import ChatMessage
 __all__ = [
     "IDModel",
     "BaseModel",
     "TimestampedModel",
     "BigIntIDModel",
-    # "User",
     "Tenant",
-    # "Topic",
-    # "Scenario",
-    # "Session",
-    'Agent'
+    'Agent',
+    'Chat',
+    'ChatMessage',
 ]

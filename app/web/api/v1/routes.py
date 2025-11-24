@@ -11,10 +11,10 @@ The router serves as the entry point for all v1 API routes in the application.
 from fastapi import APIRouter
 
 from app.web.api.v1.healthcheck import healthcheck_router
-from app.web.api.v1.user import router as user_router
 
-from app.web.api.v1.superadmin.auth import router as superadmin_auth_router
+
 from app.web.api.v1.superadmin.routes import router as superadmin_router
+from app.web.api.v1.tenant.routes import router as tenant_router
 
 # from app.web.api.v1.chat.chat_routes import chat_router
 
@@ -22,7 +22,5 @@ from app.web.api.v1.superadmin.routes import router as superadmin_router
 v1_router = APIRouter()
 
 v1_router.include_router(healthcheck_router)
-v1_router.include_router(user_router)
-
-v1_router.include_router(superadmin_auth_router)  # Superadmin login
 v1_router.include_router(superadmin_router)    
+v1_router.include_router(tenant_router)   

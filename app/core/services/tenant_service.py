@@ -1,10 +1,15 @@
 """Service layer for tenant authentication and management operations."""
 
-from typing import Optional
-from fastapi import Depends, HTTPException, status
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+import csv
+
+from fastapi import Depends, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 from passlib.context import CryptContext
+from openpyxl import load_workbook
 
 from app.core.database import get_db
 from app.core.repositories.tenant_repository import TenantRepository
@@ -16,6 +21,12 @@ from app.core.exceptions.api_exceptions import (
     ApiConflictError,
     ApiInternalServerError,
 )
+from app.core.utils.file_utils import (
+    ensure_directory,
+    generate_unique_filename,
+    validate_file_extension,
+)
+from app.web.settings import settings
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -23,7 +34,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class TenantService:
     """Handles business logic for tenant operations."""
-
+    
     def __init__(self, session: AsyncSession) -> None:
         """Initialize tenant service.
 
@@ -33,6 +44,7 @@ class TenantService:
         self.tenant_repo = TenantRepository(session)
         self.agent_repo = AgentRepository(session)
         self.session = session
+        self.dataset_base_dir = Path(settings.dataset_upload_dir).resolve()
 
     # ==================== PASSWORD UTILITIES ====================
 
@@ -187,6 +199,208 @@ class TenantService:
                 message="Failed to retrieve tenants",
             ) from e
 
+
+    # In TenantAuthService
+    async def get_tenant_agents(self, tenant_id: int):
+        tenant = await self.get_tenant_by_id(tenant_id)
+        return tenant.agents if tenant else []
+    
+    # ==================== DATASET MANAGEMENT ====================
+
+    async def upload_dataset(
+        self, tenant_id: int, upload_file: UploadFile
+    ) -> Dict[str, Any]:
+        """Upload or replace tenant dataset."""
+        tenant = await self.get_tenant_by_id(tenant_id)
+
+        if not upload_file or not upload_file.filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="File is required"
+            )
+
+        is_valid, error_message = validate_file_extension(
+            upload_file.filename, settings.dataset_allowed_extensions
+        )
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=error_message
+            )
+
+        file_bytes = await upload_file.read()
+        await upload_file.close()
+
+        if not file_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Empty files are not allowed",
+            )
+
+        previous_path = tenant.dataset_storage_path
+
+        tenant_dir = Path(
+            ensure_directory(str(self.dataset_base_dir / f"tenant_{tenant_id}"))
+        )
+        unique_filename = generate_unique_filename(
+            upload_file.filename, prefix=f"tenant{tenant_id}"
+        )
+        new_file_path = tenant_dir / unique_filename
+
+        with open(new_file_path, "wb") as destination:
+            destination.write(file_bytes)
+
+        extension = Path(upload_file.filename).suffix.lower()
+
+        preview = self._build_dataset_preview(new_file_path, extension)
+
+        metadata = {
+            "original_name": upload_file.filename,
+            "size_bytes": len(file_bytes),
+            "uploaded_at": datetime.utcnow().isoformat(),
+            "extension": extension,
+            "preview": preview,
+        }
+
+        updated_tenant = await self.tenant_repo.update(
+            record_id=tenant_id,
+            update_data={
+                "dataset_storage_path": str(new_file_path),
+                "dataset_metadata": metadata,
+            },
+            commit=True,
+        )
+
+        self._cleanup_previous_dataset_file(previous_path, new_file_path)
+
+        logger.info(f"Dataset uploaded for tenant {tenant_id}")
+
+        return {
+            "storage_path": updated_tenant.dataset_storage_path,
+            "metadata": updated_tenant.dataset_metadata,
+        }
+
+    async def get_dataset_preview(self, tenant_id: int) -> Dict[str, Any]:
+        """Return stored dataset metadata for preview."""
+        tenant = await self.get_tenant_by_id(tenant_id)
+
+        if not tenant.dataset_storage_path or not tenant.dataset_metadata:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No dataset uploaded for this tenant",
+            )
+
+        return {
+            "storage_path": tenant.dataset_storage_path,
+            "metadata": tenant.dataset_metadata,
+        }
+
+    def _build_dataset_preview(
+        self, file_path: Path, extension: str
+    ) -> Dict[str, Any]:
+        """Return preview data for supported file types."""
+        try:
+            if extension == ".csv":
+                return self._preview_csv(file_path)
+            if extension == ".xlsx":
+                return self._preview_excel(file_path)
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported file type for preview",
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to build dataset preview: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unable to read dataset. Please upload a valid CSV or Excel file.",
+            ) from exc
+
+    def _preview_csv(self, file_path: Path) -> Dict[str, Any]:
+        columns: list[str] = []
+        rows: list[Dict[str, Any]] = []
+
+        with open(
+            file_path, mode="r", encoding="utf-8", errors="ignore", newline=""
+        ) as csv_file:
+            reader = csv.reader(csv_file)
+            header = next(reader, None)
+
+            if header is None:
+                return {"columns": [], "rows": []}
+
+            columns = self._normalize_header(list(header))
+
+            for row in reader:
+                rows.append(self._row_to_dict(columns, row))
+                if len(rows) >= settings.dataset_preview_limit:
+                    break
+
+        return {"columns": columns, "rows": rows}
+
+    def _preview_excel(self, file_path: Path) -> Dict[str, Any]:
+        rows: list[Dict[str, Any]] = []
+        workbook = load_workbook(filename=file_path, read_only=True, data_only=True)
+
+        try:
+            sheet = workbook.active
+            rows_iter = sheet.iter_rows(values_only=True)
+            header = next(rows_iter, None)
+
+            if header is None:
+                return {"columns": [], "rows": []}
+
+            columns = self._normalize_header(list(header))
+
+            for row in rows_iter:
+                row_values = list(row) if row is not None else []
+                rows.append(self._row_to_dict(columns, row_values))
+                if len(rows) >=settings.dataset_preview_limit:
+                    break
+
+            return {"columns": columns, "rows": rows}
+        finally:
+            workbook.close()
+
+    def _normalize_header(self, header_values: list[Any]) -> list[str]:
+        columns: list[str] = []
+        for idx, value in enumerate(header_values):
+            column_name = ""
+            if value is not None:
+                column_name = str(value).strip()
+            if not column_name:
+                column_name = f"Column {idx + 1}"
+            columns.append(column_name)
+        return columns
+
+    def _row_to_dict(
+        self, columns: list[str], row_values: list[Any]
+    ) -> Dict[str, Any]:
+        row_data: Dict[str, Any] = {}
+        for idx, column in enumerate(columns):
+            cell_value = ""
+            if row_values and idx < len(row_values):
+                value = row_values[idx]
+                cell_value = "" if value is None else str(value)
+            row_data[column] = cell_value
+        return row_data
+
+    def _cleanup_previous_dataset_file(
+        self, previous_path: Optional[str], new_path: Path
+    ) -> None:
+        if not previous_path or previous_path == str(new_path):
+            return
+
+        try:
+            previous = Path(previous_path)
+            if previous.exists():
+                previous.unlink()
+                logger.debug(f"Removed previous dataset file: {previous_path}")
+        except Exception as exc:
+            logger.warning(
+                f"Failed to delete previous dataset file {previous_path}: {exc}"
+            )
+
     # ==================== TENANT UPDATE ====================
 
     async def update_tenant(self, tenant_id: int, update_data: TenantUpdate) -> Tenant:
@@ -257,6 +471,8 @@ class TenantService:
                 error=f"Failed to delete tenant: {str(e)}",
                 message="Failed to delete tenant",
             ) from e
+            
+
 
 
 # Dependency injection

@@ -1,9 +1,9 @@
 """Tenant model definition - Tenants are the primary users of the system."""
 
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, BigInteger, Boolean, func
+from sqlalchemy import Boolean, DateTime, String, BigInteger, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.models.base_model import Base
@@ -58,6 +58,16 @@ class Tenant(Base):
     
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    
+    end_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    dataset_storage_path: Mapped[Optional[str]] = mapped_column(
+        String(1024), nullable=True
+    )
+    
+    dataset_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
     )
 
     # Relationships

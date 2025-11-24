@@ -26,7 +26,7 @@ def create_superadmin_token(email: str) -> str:
     payload = {
         "sub": email,
         "type": "superadmin",
-        "exp": datetime.utcnow() + timedelta(days=7),  # 7 days expiry
+        "exp": datetime.utcnow() + timedelta(days=1),  # 7 days expiry
         "iat": datetime.utcnow(),
     }
     token = jwt.encode(payload, settings.secret_key, algorithm="HS256")
