@@ -133,6 +133,12 @@ class Settings(BaseSettings):
         description="OpenAI API key for embedding generation.",
     )
 
+    OPENAI_CONTEXT_MODEL: str = Field(
+        default="gpt-4.1",
+        alias="OPENAI_CONTEXT_MODEL",
+        description="OpenAI model for contextual question generation.",
+    )
+
 
     model_config = SettingsConfigDict(
         env_file=".env",

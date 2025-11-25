@@ -32,6 +32,7 @@ MarkupSafe==3.0.3
 multidict==6.7.0
 chromadb==0.5.23
 langchain-openai==1.0.3
+openai== 2.8.1
 tenacity==8.2.3
 passlib==1.7.4
 psycopg==3.2.12

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 import csv
 
 from fastapi import Depends, HTTPException, UploadFile, status
@@ -278,6 +278,26 @@ class TenantService:
             "metadata": updated_tenant.dataset_metadata,
         }
 
+    async def get_dataset_file_info(self, tenant_id: int) -> Tuple[Path, dict]:
+        """Ensure a dataset exists for the tenant and return the file path + metadata."""
+        tenant = await self.get_tenant_by_id(tenant_id)
+
+        if not tenant.dataset_storage_path or not tenant.dataset_metadata:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No dataset uploaded for this tenant",
+            )
+
+        file_path = Path(tenant.dataset_storage_path).resolve()
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dataset file is missing on the server",
+            )
+
+        return file_path, tenant.dataset_metadata
+
+
     async def get_dataset_preview(self, tenant_id: int) -> Dict[str, Any]:
         """Return stored dataset metadata for preview."""
         tenant = await self.get_tenant_by_id(tenant_id)
@@ -400,6 +420,7 @@ class TenantService:
             logger.warning(
                 f"Failed to delete previous dataset file {previous_path}: {exc}"
             )
+
 
     # ==================== TENANT UPDATE ====================
 

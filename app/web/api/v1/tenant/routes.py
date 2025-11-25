@@ -1,7 +1,7 @@
 """Combined Tenant Authentication & Chat Routes"""
 
 from fastapi import APIRouter, Depends, status, Query, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse,FileResponse
 from pydantic import BaseModel, EmailStr
 from typing import Dict
 from loguru import logger
@@ -280,3 +280,18 @@ async def get_dataset_preview(
             message="Failed to retrieve dataset preview",
             errors=[{"code": "FAILED", "message": str(e)}],
         )
+
+
+@router.get("/dataset/download")
+async def download_dataset(
+    current_tenant: Dict = Depends(get_current_tenant),
+    service: TenantService = Depends(get_tenant_service),
+) -> FileResponse:
+    file_path, metadata = await service.get_dataset_file_info(current_tenant["tenant_id"])
+
+    filename = metadata.get("original_name") or file_path.name
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/octet-stream",
+    )

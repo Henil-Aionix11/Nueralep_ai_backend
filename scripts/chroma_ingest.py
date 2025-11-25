@@ -32,8 +32,8 @@ DEFAULT_DATA_FILES = [
     BASE_DIR / "neo4j_training_data (1).jsonl",
 ]
 DEFAULT_CHROMA_PATH = BASE_DIR / "chroma_db"
-DEFAULT_COLLECTION = "sap_migration_knowledge"
-DEFAULT_EMBED_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+DEFAULT_COLLECTION = settings.CHROMA_COLLECTION_NAME
+DEFAULT_EMBED_MODEL = settings.OPENAI_EMBEDDING_MODEL 
 DEFAULT_BATCH_SIZE = 100
 
 
